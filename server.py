@@ -63,7 +63,6 @@ def init_mongo_setup():
         studies_col.create_index("received_ae_title")
         reports_col.create_index("study_uid", unique=True)
 
-        # Initialize Default Master Admin Credentials if not present
         if not users_col.find_one({"username": "admin"}):
             admin_doc = {
                 "username": "admin",
@@ -88,7 +87,7 @@ def init_mongo_setup():
 init_mongo_setup()
 
 # 3. FASTAPI SETUP
-app = FastAPI(title="Medical PACS Server - Admin Managed Multi-Tenant Isolation")
+app = FastAPI(title="Medical PACS Server - Fast Optimized")
 
 app.add_middleware(
     CORSMiddleware,
@@ -168,7 +167,6 @@ def handle_store(event):
             "instanceNumber": inst_num
         }
 
-        # Lock study strictly to assigned Doctor and AE Title
         studies_col.update_one(
             {"study_uid": study_uid},
             {
@@ -215,13 +213,12 @@ def start_dicom_listener():
 
 threading.Thread(target=start_dicom_listener, daemon=True).start()
 
-# 5. PIXEL CACHING
-@lru_cache(maxsize=64)
+# 5. PIXEL CACHING (Increased cache size for faster subsequent loads)
+@lru_cache(maxsize=128)
 def get_cached_pixel_bytes(filepath: str) -> bytes:
     ds = pydicom.dcmread(filepath, force=True)
     return ds.pixel_array.astype(np.uint16).tobytes()
 
-# 6. AUTHENTICATION & ADMIN PROVISIONING
 @app.post("/api/auth/login")
 async def login(payload: dict):
     username = payload.get("username", "").strip().lower()
@@ -249,13 +246,13 @@ async def register_doctor(
 ):
     admin_user = users_col.find_one({"username": admin_username.strip().lower(), "role": "ADMIN"})
     if not admin_user:
-        raise HTTPException(status_code=403, detail="Unauthorized access. Only administrators can register doctors.")
+        raise HTTPException(status_code=403, detail="Unauthorized access.")
 
     clean_u = username.strip().lower()
     clean_ae = ae_title.strip().upper()
 
     if users_col.find_one({"$or": [{"username": clean_u}, {"ae_title": clean_ae}]}):
-        raise HTTPException(status_code=400, detail="Doctor username or Called AE Title already exists.")
+        raise HTTPException(status_code=400, detail="Username or AE Title already exists.")
 
     logo_url = ""
     if logo and logo.filename:
@@ -287,32 +284,27 @@ async def register_doctor(
         "sign_url": sign_url
     }
     users_col.insert_one(new_doc)
-    return {"status": "success", "message": f"Doctor '{doctor_name}' registered and locked to AE Title '{clean_ae}'."}
+    return {"status": "success", "message": f"Doctor '{doctor_name}' registered successfully."}
 
 @app.get("/api/admin/list-doctors")
 def list_doctors(admin_username: str = Query(...)):
     admin = users_col.find_one({"username": admin_username.strip().lower(), "role": "ADMIN"})
     if not admin:
-        raise HTTPException(status_code=403, detail="Unauthorized access.")
+        raise HTTPException(status_code=403, detail="Unauthorized")
     doctors = list(users_col.find({"role": "DOCTOR"}, {"_id": 0, "password_hash": 0}))
     return doctors
 
-# 7. STRICT WORKLIST QUERY (DATA ISOLATION)
 @app.get("/api/studies-meta")
 def get_studies_meta(doctor_username: str = Query(None)):
     if not doctor_username:
         return []
-
     u = users_col.find_one({"username": doctor_username.strip().lower()})
     if not u:
         return []
-
-    # Admin gets unrestricted global access; Doctor strictly receives their own records
     if u.get("role") == "ADMIN":
         query = {}
     else:
         query = {"doctor_username": u["username"]}
-
     studies = list(studies_col.find(query, {"_id": 0}))
     for s in studies:
         s["imageCount"] = len(s.get("files", []))
@@ -323,11 +315,9 @@ def get_studies_meta(doctor_username: str = Query(None)):
 def sync_storage_files():
     count = 0
     if not os.path.exists(STORAGE_DIR):
-        return {"status": "error", "message": "Storage directory not found"}
-
+        return {"status": "error", "message": "Storage dir not found"}
     for fname in os.listdir(STORAGE_DIR):
-        if not fname.lower().endswith(".dcm"): 
-            continue
+        if not fname.lower().endswith(".dcm"): continue
         fpath = os.path.join(STORAGE_DIR, fname)
         try:
             ds = pydicom.dcmread(fpath, stop_before_pixels=True, force=True)
@@ -337,8 +327,7 @@ def sync_storage_files():
             p_age = str(getattr(ds, "PatientAge", "N/A"))
             p_sex = str(getattr(ds, "PatientSex", "N/A"))
             s_date = str(getattr(ds, "StudyDate", "N/A"))
-            if len(s_date) == 8: 
-                s_date = f"{s_date[:4]}-{s_date[4:6]}-{s_date[6:]}"
+            if len(s_date) == 8: s_date = f"{s_date[:4]}-{s_date[4:6]}-{s_date[6:]}"
             modality = str(getattr(ds, "Modality", "DX"))
             body_part = str(getattr(ds, "BodyPartExamined", "CHEST"))
             view_pos = str(getattr(ds, "ViewPosition", "AP/PA"))
@@ -379,18 +368,15 @@ def decode_dicom(filename: str):
     filepath = os.path.join(STORAGE_DIR, filename)
     if not os.path.exists(filepath):
         candidates = [f for f in os.listdir(STORAGE_DIR) if f == filename or f.endswith(filename)]
-        if candidates: 
-            filepath = os.path.join(STORAGE_DIR, candidates[0])
-        else: 
-            return JSONResponse(status_code=404, content={"error": "File not found"})
+        if candidates: filepath = os.path.join(STORAGE_DIR, candidates[0])
+        else: return JSONResponse(status_code=404, content={"error": "File not found"})
 
-    ds = pydicom.dcmread(filepath, force=True)
+    # OPTIMIZED: stop_before_pixels=True ensures metadata reads instantly without parsing 35MB pixel array
+    ds = pydicom.dcmread(filepath, stop_before_pixels=True, force=True)
     wc = getattr(ds, "WindowCenter", 2048)
     ww = getattr(ds, "WindowWidth", 4096)
-    if isinstance(wc, pydicom.multival.MultiValue): 
-        wc = float(wc[0])
-    if isinstance(ww, pydicom.multival.MultiValue): 
-        ww = float(ww[0])
+    if isinstance(wc, pydicom.multival.MultiValue): wc = float(wc[0])
+    if isinstance(ww, pydicom.multival.MultiValue): ww = float(ww[0])
 
     pixel_spacing = getattr(ds, "PixelSpacing", [1.0, 1.0])
     row_spacing = float(pixel_spacing[0]) if len(pixel_spacing) > 0 else 1.0
@@ -411,20 +397,17 @@ def raw_pixels(filename: str):
     filepath = os.path.join(STORAGE_DIR, filename)
     if not os.path.exists(filepath):
         candidates = [f for f in os.listdir(STORAGE_DIR) if f == filename or f.endswith(filename)]
-        if candidates: 
-            filepath = os.path.join(STORAGE_DIR, candidates[0])
-        else: 
-            return Response(status_code=404)
+        if candidates: filepath = os.path.join(STORAGE_DIR, candidates[0])
+        else: return Response(status_code=404)
 
+    # Uses LRU Cache + Browser Caching headers for instant subsequent loads
     data = get_cached_pixel_bytes(filepath)
     headers = {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0"
+        "Cache-Control": "public, max-age=86400",
+        "Pragma": "cache",
     }
     return Response(content=data, media_type="application/octet-stream", headers=headers)
 
-# 8. IMAGE PROCESSING PIPELINE
 @app.post("/api/process-image")
 async def process_image_backend(payload: dict):
     filename = payload.get("filename")
@@ -437,10 +420,8 @@ async def process_image_backend(payload: dict):
     filepath = os.path.join(STORAGE_DIR, filename)
     if not os.path.exists(filepath):
         candidates = [f for f in os.listdir(STORAGE_DIR) if f == filename or f.endswith(filename)]
-        if candidates: 
-            filepath = os.path.join(STORAGE_DIR, candidates[0])
-        else: 
-            raise HTTPException(status_code=404, detail="File not found")
+        if candidates: filepath = os.path.join(STORAGE_DIR, candidates[0])
+        else: raise HTTPException(status_code=404, detail="File not found")
 
     ds = pydicom.dcmread(filepath, force=True)
     arr = ds.pixel_array.astype(np.float32)
@@ -469,7 +450,6 @@ async def process_image_backend(payload: dict):
     }
     return Response(content=arr.tobytes(), media_type="application/octet-stream", headers=headers)
 
-# 9. PERSISTENT CROPPED DICOM CREATION
 @app.post("/api/save-cropped-dicom")
 async def save_cropped_dicom(payload: dict):
     original_filename = payload.get("original_filename")
@@ -527,7 +507,6 @@ async def save_cropped_dicom(payload: dict):
 
     return {"status": "success", "new_filename": new_filename, "file_info": file_info}
 
-# 10. REPORTING
 @app.post("/api/report/save")
 async def save_report(payload: dict):
     study_uid = payload.get("studyUid", "unknown")
