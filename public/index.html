@@ -1,0 +1,1115 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PACS IMAGESUITE</title>
+  <style>
+    :root {
+      --bg-dark: #0a0c0f;
+      --bg-surface: #13171d;
+      --bg-card: #181d24;
+      --bg-hover: #222933;
+      --accent: #00e5ff;
+      --accent-glow: rgba(0, 229, 255, 0.25);
+      --accent-green: #10b981;
+      --accent-warn: #f59e0b;
+      --accent-danger: #ef4444;
+      --border-color: #262e3b;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; }
+    body { background: #0c0d0f; color: #d0d4dc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    #navbar { height: 40px; background: linear-gradient(180deg, #383e46 0%, #1c2024 100%); border-bottom: 1px solid #101214; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; z-index: 20; }
+    .brand { font-size: 13px; font-weight: bold; color: #00e5ff; display: flex; align-items: center; gap: 8px; }
+    .nav-btn { background: #282d33; border: 1px solid #444b55; color: #eee; padding: 4px 12px; border-radius: 2px; cursor: pointer; font-size: 11px; }
+    .nav-btn:hover { background: #3a424b; }
+
+    .view-screen { position: absolute; top: 40px; bottom: 0; left: 0; right: 0; }
+
+    #dashboard-view { background: #0f1012; padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .search-box { background: #1a1a1e; border: 1px solid #2e2e34; color: #fff; padding: 6px 12px; border-radius: 4px; width: 300px; font-size: 12px; outline: none; }
+    table { width: 100%; border-collapse: collapse; background: #161618; border: 1px solid #27272a; border-radius: 4px; overflow: hidden; }
+    th { background: #1e1e22; color: #a1a1aa; font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 8px 12px; text-align: left; }
+    td { padding: 9px 12px; font-size: 12px; border-bottom: 1px solid #202024; color: #e4e4e7; }
+    tr.table-row:hover { background: #202026; cursor: pointer; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: bold; background: #00e5ff22; color: #00e5ff; }
+
+    #viewer-view { display: none; flex-direction: row; height: calc(100vh - 40px); }
+
+    /* Left Sidebar */
+    #sidebar-left { width: 195px; min-width: 195px; background: #141619; border-right: 1px solid #24282f; padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+    .section-title { font-size: 10px; text-transform: uppercase; color: #71717a; font-weight: bold; margin-top: 4px; }
+    #filmstrip { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 160px; }
+    .filmstrip-item { padding: 6px 8px; background: #1f2328; border: 1px solid #333942; border-radius: 2px; font-size: 11px; cursor: pointer; display: flex; justify-content: space-between; }
+    .filmstrip-item:hover { background: #2b3138; }
+    .filmstrip-item.active { border-color: #00e5ff; background: #00e5ff18; }
+
+    /* Enhancement Controls */
+    .slider-group { display: flex; flex-direction: column; gap: 2px; }
+    .slider-label { display: flex; justify-content: space-between; font-size: 10px; color: #a1a1aa; }
+    input[type=range] { width: 100%; accent-color: #00e5ff; cursor: pointer; }
+
+    /* Center Viewport Grid */
+    #main-viewport-container { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #000; position: relative; }
+    #top-toolbar { height: 36px; background: #1a1d21; border-bottom: 1px solid #282c34; display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+    .tool-btn { background: #262a30; border: 1px solid #3c424d; color: #fff; padding: 3px 8px; border-radius: 2px; cursor: pointer; font-size: 11px; }
+    .tool-btn.active { background: #00e5ff; color: #000; font-weight: bold; }
+
+    #grid-viewport { flex: 1; display: grid; gap: 2px; background: #181a1d; padding: 2px; overflow: hidden; position: relative; }
+    .view-cell { background: #000; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid #222; cursor: crosshair; }
+    .view-cell.active-cell { border: 2px solid #00e5ff; }
+    .view-cell canvas { position: absolute; left: 0; top: 0; }
+
+    .cell-hud { position: absolute; font-size: 10px; line-height: 1.3; color: #00e5ff; text-shadow: 1px 1px 2px #000; font-family: monospace; pointer-events: none; z-index: 5; }
+    .hud-tl { top: 6px; left: 8px; }
+    .hud-br { bottom: 6px; right: 8px; text-align: right; }
+
+    /* Right Toolbox */
+    #sidebar-right { width: 148px; min-width: 148px; background: #181b1f; border-left: 1px solid #262a32; display: flex; flex-direction: column; }
+    .filmplus-grid { flex: 1; padding: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; align-content: start; }
+    .fp-tile { background: linear-gradient(180deg, #323840 0%, #202428 100%); border: 1px solid #3e4652; color: #ccc; border-radius: 2px; height: 42px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-size: 9px; gap: 2px; }
+    .fp-tile:hover { background: #3d4550; color: #00e5ff; }
+    .fp-tile.active { background: #00e5ff; color: #000; font-weight: bold; }
+
+    /* Layout Modal */
+    #layout-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 150; align-items: center; justify-content: center; }
+    #layout-dialog { width: 620px; background: #b8bcc2; color: #000; border: 2px solid #fff; box-shadow: 0 0 20px rgba(0,0,0,0.9); }
+    .win-bar { background: #2f3e58; color: #fff; padding: 4px 8px; font-size: 11px; font-weight: bold; display: flex; justify-content: space-between; }
+    .layout-tabs { display: flex; background: #a6a6a6; border-bottom: 1px solid #808080; padding: 4px 6px 0 6px; gap: 4px; }
+    .layout-tab { padding: 4px 10px; font-size: 11px; background: #bfbfbf; border: 1px solid #808080; border-bottom: none; cursor: pointer; border-radius: 3px 3px 0 0; }
+    .layout-tab.active { background: #d3d7dc; font-weight: bold; }
+    .layout-card-grid { display: flex; flex-wrap: wrap; gap: 14px; padding: 16px; background: #d3d7dc; min-height: 200px; }
+    .layout-opt { display: flex; flex-direction: column; align-items: center; cursor: pointer; padding: 4px; border: 2px solid transparent; }
+    .layout-opt:hover, .layout-opt.active { border-color: #0066cc; background: #e2edfa; }
+    .layout-wire { width: 60px; height: 75px; border: 2px solid #000; background: #fff; display: grid; gap: 1px; padding: 1px; }
+    .wire-cell { background: #dcdcdc; border: 1px solid #000; }
+
+    /* Film Print Composer Modal */
+    #film-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; }
+    #film-dialog { width: 980px; max-height: 95vh; background: #16181b; border: 1px solid #333; border-radius: 4px; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* STRICT LOGIN ONLY OVERLAY */
+    #auth-overlay { position: fixed; inset: 0; background: #07090c; z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .auth-card { width: 360px; background: #13171d; border: 1px solid #262e3b; border-radius: 6px; padding: 24px; box-shadow: 0 10px 35px rgba(0,0,0,0.7); }
+    .auth-input { background: #1a2028; border: 1px solid #323b49; border-radius: 4px; color: #fff; padding: 9px 12px; font-size: 12px; outline: none; width: 100%; margin: 4px 0 12px 0; }
+    .auth-input:focus { border-color: #00e5ff; }
+    .auth-submit-btn { width: 100%; background: #00e5ff; color: #000; font-weight: bold; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .auth-submit-btn:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+
+  <!-- STRICT CLIENT LOGIN OVERLAY (NO PUBLIC REGISTRATION FORM) -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <span style="font-size:18px;">🏥</span>
+        <h3 style="color:#00e5ff; font-size:14px; letter-spacing:0.5px;">MEDICAL PACS WORKSTATION</h3>
+      </div>
+      <p style="font-size:11px; color:#94a3b8; margin-bottom:16px;">Sign in with Doctor or Administrator credentials</p>
+      <form onsubmit="handleLogin(event)">
+        <label style="font-size:10px; color:#94a3b8; font-weight:600;">USERNAME</label>
+        <input type="text" id="login-username" class="auth-input" placeholder="Enter username" required>
+        <label style="font-size:10px; color:#94a3b8; font-weight:600;">PASSWORD</label>
+        <input type="password" id="login-password" class="auth-input" placeholder="••••••••" required>
+        <button type="submit" class="auth-submit-btn">Sign In to PACS</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- NAVBAR -->
+  <div id="navbar">
+    <div class="brand">🏥 Medical PACS & Film Plus Suite</div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span id="nav-user-label" style="font-size:11px; color:#aaa;"></span>
+      <!-- Dedicated link visible only to Admin -->
+      <a id="btn-admin-portal" href="/admin.html" class="nav-btn" style="display:none; color:#c084fc; border-color:#9333ea55; text-decoration:none;">⚙️ Master Admin Console</a>
+      <button class="nav-btn" onclick="showView('dashboard')">📋 Dashboard</button>
+      <button class="nav-btn" onclick="syncFiles()">⚡ Sync Storage</button>
+      <button class="nav-btn" onclick="fetchStudies()">🔄 Refresh</button>
+      <button class="nav-btn" onclick="handleLogout()" style="background:#ef444422; color:#f87171;">Logout</button>
+    </div>
+  </div>
+
+  <!-- WORKLIST -->
+  <div id="dashboard-view" class="view-screen">
+    <div class="dashboard-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h2 style="font-size:17px;">Patient Studies Worklist</h2>
+        <small id="lbl-isolation-status" style="color:#00e5ff;">Access Feed</small>
+      </div>
+      <input type="text" id="search-input" class="search-box" placeholder="🔍 Search Patient Name or ID..." oninput="filterTable()">
+    </div>
+    <table>
+      <thead>
+        <tr><th>Modality</th><th>Patient Name</th><th>Patient ID</th><th>Age / Sex</th><th>Body Part</th><th>Study Date</th><th>Count</th><th>Action</th></tr>
+      </thead>
+      <tbody id="worklist-body"></tbody>
+    </table>
+  </div>
+
+  <!-- VIEWER -->
+  <div id="viewer-view" class="view-screen">
+    <!-- Left Sidebar -->
+    <aside id="sidebar-left">
+      <button onclick="showView('dashboard')" class="tool-btn">⬅ Back to Worklist</button>
+      <div class="section-title">Patient Info</div>
+      <div id="hud-patient" style="font-size:11px; color:#aaa;">--</div>
+      
+      <div class="section-title">Series Views (Select Slot & Assign)</div>
+      <div id="filmstrip"></div>
+
+      <div class="section-title">Image Enhancements</div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Brightness</span><span id="val-bright">0</span></div>
+        <input type="range" id="slider-bright" min="-100" max="100" step="5" value="0" oninput="updateEnhancements()">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Contrast</span><span id="val-contrast">1.0</span></div>
+        <input type="range" id="slider-contrast" min="0.5" max="2.5" step="0.1" value="1.0" oninput="updateEnhancements()">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Smoothing</span><span id="val-smooth">0px</span></div>
+        <input type="range" id="slider-smooth" min="0" max="4" step="0.5" value="0" oninput="updateEnhancements()">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Sharpness</span><span id="val-sharp">0%</span></div>
+        <input type="range" id="slider-sharp" min="0" max="100" step="5" value="0" oninput="updateEnhancements()">
+      </div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Gamma</span><span id="val-gamma">1.0</span></div>
+        <input type="range" id="slider-gamma" min="0.4" max="2.2" step="0.1" value="1.0" oninput="updateEnhancements()">
+      </div>
+      <button class="tool-btn" onclick="resetEnhancements()" style="margin-top:2px;">Reset Sliders</button>
+      
+      <div style="margin-top:auto; padding-top:6px;">
+        <button id="btn-save-backend-crop" onclick="saveCropToBackend()" class="tool-btn" style="width:100%; display:none; background:#22c55e; color:#000; font-weight:bold; margin-bottom:4px;">💾 Save Cropped to Server</button>
+        <button id="btn-undo-crop" onclick="undoCurrentCrop()" class="tool-btn" style="width:100%; display:none; background:#f59e0b22; color:#fbbf24; border-color:#f59e0b88;">↩️ Revert to Original</button>
+      </div>
+    </aside>
+
+    <!-- Center Viewports Grid -->
+    <main id="main-viewport-container">
+      <div id="top-toolbar">
+        <button class="tool-btn active" id="btn-ww" onclick="setTool('ww')">☀️ Window</button>
+        <button class="tool-btn" id="btn-pan" onclick="setTool('pan')">✋ Pan</button>
+        <button class="tool-btn" id="btn-measure" onclick="setTool('measure')">📏 Measure</button>
+        <button class="tool-btn" id="btn-crop" onclick="setTool('crop')">✂️ Crop ROI</button>
+        <button class="tool-btn" onclick="toggleInvert()">🔄 Invert</button>
+        <button class="tool-btn" onclick="resetActiveCell()">🎯 Reset View</button>
+        <div style="flex:1;"></div>
+        <button class="tool-btn" onclick="openLayoutModal()" style="background:#0284c7; color:#fff; font-weight:bold;">⊞ Layout: <span id="lbl-layout">1 Spot</span></button>
+        <button class="tool-btn" onclick="openFilmModal()" style="background:#f59e0b; color:#000; font-weight:bold;">🎞️ Print Film</button>
+      </div>
+
+      <div id="grid-viewport"></div>
+    </main>
+
+    <!-- Right Toolbox -->
+    <aside id="sidebar-right">
+      <div class="filmplus-grid">
+        <div class="fp-tile" onclick="rotateCW()">⟳ Rotate CW</div>
+        <div class="fp-tile" onclick="rotateACW()">⟲ 90° ACW</div>
+        <div class="fp-tile" onclick="flipH()">⇄ Flip H</div>
+        <div class="fp-tile" onclick="flipV()">⇅ Flip V</div>
+        <div class="fp-tile" onclick="toggleInvert()">◐ Invert</div>
+        <div class="fp-tile" onclick="fitActiveCell()">⊡ Fit</div>
+        <div class="fp-tile" id="tile-crop" onclick="setTool('crop')">✂️ Crop</div>
+        <div class="fp-tile" onclick="setTool('measure')">📏 Measure</div>
+        <div class="fp-tile" onclick="openLayoutModal()">⊞ Layout</div>
+        <div class="fp-tile" onclick="resetActiveCell()">↺ Reset</div>
+        <div class="fp-tile" onclick="applyPreset(1500, 450)">🦴 Bone</div>
+        <div class="fp-tile" onclick="applyPreset(1600, -600)">🫁 Lung</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- MULTI-SPOT LAYOUT MODAL -->
+  <div id="layout-modal">
+    <div id="layout-dialog">
+      <div class="win-bar"><span>Layout Configuration</span><span onclick="closeLayoutModal()" style="cursor:pointer;">✕</span></div>
+      <div class="layout-tabs">
+        <div class="layout-tab" id="tab-1-2" onclick="renderLayoutTab('1-2')">1 & 2 Spots</div>
+        <div class="layout-tab" id="tab-3-4" onclick="renderLayoutTab('3-4')">3 & 4 Spots</div>
+        <div class="layout-tab active" id="tab-6-13" onclick="renderLayoutTab('6-13')">6 to 13 spots</div>
+      </div>
+      <div class="layout-card-grid" id="layout-grid-cards"></div>
+    </div>
+  </div>
+
+  <!-- FILM PRINT MODAL (WITH INTERACTIVE ZOOM & ALL DETAILS IN FOOTER) -->
+  <div id="film-modal">
+    <div id="film-dialog">
+      <div id="film-toolbar" style="background:#1e1e24; color:#fff; padding:8px 14px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <b style="color:#00e5ff; font-size:12px;">🎞️ Medical Film Composer</b>
+          <select id="film-size-picker" onchange="composeFilm()" style="background:#282c34; color:#fff; border:1px solid #444; font-size:11px; padding:3px 6px;">
+            <option value="8x10">8 x 10 inch</option>
+            <option value="10x12">10 x 12 inch</option>
+            <option value="14x17">14 x 17 inch</option>
+            <option value="A4">A4 Sheet</option>
+          </select>
+          <select id="film-orient-picker" onchange="composeFilm()" style="background:#282c34; color:#fff; border:1px solid #444; font-size:11px; padding:3px 6px;">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+          
+          <span style="font-size:11px; color:#aaa; margin-left:4px;">Footer Align:</span>
+          <select id="film-align-picker" onchange="composeFilm()" style="background:#0284c7; color:#fff; font-weight:bold; border:1px solid #0369a1; font-size:11px; padding:3px 6px;">
+            <option value="left">⯸ Left-Hand Side</option>
+            <option value="center">⚌ Center</option>
+          </select>
+          
+          <small style="color:#aaa; margin-left:8px;">Scroll: Zoom Slot | Drag: Adjust / Pan Slot</small>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="tool-btn" onclick="executeFilmPrint()" style="background:#22c55e; color:#000; font-weight:bold;">🖨️ Print Sheet</button>
+          <button class="tool-btn" onclick="closeFilmModal()">✕</button>
+        </div>
+      </div>
+
+      <div style="background:#14171a; border-bottom:1px solid #262a32; padding:6px 12px; display:flex; gap:10px; font-size:11px; align-items:center;">
+        <label style="color:#00e5ff; font-weight:bold; white-space:nowrap;">Hospital / Center Name:</label>
+        <input type="text" id="film-hospital-custom" oninput="composeFilm()" placeholder="Hospital name..." style="width:240px; background:#0c0d0f; border:1px solid #333; color:#fff; padding:3px 8px; font-size:11px; outline:none;">
+        
+        <span style="color:#555;">|</span>
+        <label style="color:#aaa; white-space:nowrap;">Remarks / Note:</label>
+        <input type="text" id="film-remarks-custom" oninput="composeFilm()" placeholder="Ref by Dr., Normal Study, or custom remark..." style="flex:1; background:#0c0d0f; border:1px solid #333; color:#fff; padding:3px 8px; font-size:11px; outline:none;">
+      </div>
+
+      <div style="padding:10px; display:flex; justify-content:center; background:#000; overflow-y:auto;">
+        <canvas id="filmCanvas" style="max-height:72vh; border:1px solid #333; cursor:grab;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null, allStudies = [], currentStudy = null;
+    let gridLayout = { rows: 1, cols: 1, name: "1 Spot" };
+    let activeCellIndex = 0;
+    let cellsState = [];
+
+    let currentTool = 'ww';
+    let isMouseDown = false, mouseBtn = 0, startPos = { x: 0, y: 0 };
+    let isCropping = false, cropStart = null, cropEnd = null;
+
+    let filterBright = 0, filterContrast = 1.0, filterSmooth = 0, filterSharp = 0, filterGamma = 1.0;
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          username: document.getElementById('login-username').value.trim(), 
+          password: document.getElementById('login-password').value 
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.detail || 'Login Failed');
+      currentUser = data.user;
+      localStorage.setItem('pacs_user', JSON.stringify(currentUser));
+      applyLoggedInUser();
+    }
+
+    function checkExistingSession() {
+      const s = localStorage.getItem('pacs_user');
+      if (s) { 
+        currentUser = JSON.parse(s); 
+        applyLoggedInUser(); 
+      } else { 
+        document.getElementById('auth-overlay').style.display = 'flex'; 
+      }
+    }
+
+    function applyLoggedInUser() {
+      document.getElementById('auth-overlay').style.display = 'none';
+      document.getElementById('nav-user-label').innerHTML = `👨‍⚕️ <b>${currentUser.doctor_name}</b> (${currentUser.ae_title})`;
+      
+      // If Admin, show direct link to Admin Management Console
+      if (currentUser.role === 'ADMIN') {
+        document.getElementById('btn-admin-portal').style.display = 'inline-block';
+        document.getElementById('lbl-isolation-status').innerText = 'Administrator Master View (All Studies)';
+      } else {
+        document.getElementById('btn-admin-portal').style.display = 'none';
+        document.getElementById('lbl-isolation-status').innerText = `Strict AE Isolation: Bound to [${currentUser.ae_title}]`;
+      }
+      fetchStudies();
+    }
+
+    function handleLogout() { 
+      localStorage.removeItem('pacs_user'); 
+      location.reload(); 
+    }
+
+    async function fetchStudies() {
+      const res = await fetch(`/api/studies-meta?doctor_username=${encodeURIComponent(currentUser.username)}&t=${Date.now()}`);
+      allStudies = await res.json();
+      renderTable(allStudies);
+    }
+
+    async function syncFiles() {
+      const res = await fetch('/api/sync-studies');
+      const d = await res.json();
+      alert(`Synced: ${d.synced_files || 0}`);
+      fetchStudies();
+    }
+
+    function renderTable(list) {
+      const tb = document.getElementById('worklist-body');
+      tb.innerHTML = '';
+      list.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.className = 'table-row';
+        tr.onclick = () => openStudy(s);
+        tr.innerHTML = `
+          <td><span class="badge">${s.modality}</span></td>
+          <td><b>${s.patientName}</b></td>
+          <td><code>${s.patientId}</code></td>
+          <td>${s.patientAge}/${s.patientSex}</td>
+          <td>${s.bodyPart}</td>
+          <td>${s.studyDate}</td>
+          <td>${s.imageCount}</td>
+          <td><button class="tool-btn">Open</button></td>
+        `;
+        tb.appendChild(tr);
+      });
+    }
+
+    function filterTable() {
+      const q = document.getElementById('search-input').value.toLowerCase();
+      renderTable(allStudies.filter(s => s.patientName.toLowerCase().includes(q) || s.patientId.toLowerCase().includes(q)));
+    }
+
+    function showView(v) {
+      document.getElementById('dashboard-view').style.display = v === 'dashboard' ? 'flex' : 'none';
+      document.getElementById('viewer-view').style.display = v === 'viewer' ? 'flex' : 'none';
+    }
+
+    function openStudy(s) {
+      currentStudy = s;
+      showView('viewer');
+      document.getElementById('hud-patient').innerHTML = `<b>${s.patientName}</b><br>ID: ${s.patientId}<br>${s.studyDate}`;
+
+      renderSeriesStrip();
+      setLayout(1, 1, '1 Spot');
+      if (s.files.length > 0) assignImageToCell(0, s.files[0]);
+    }
+
+    function renderSeriesStrip() {
+      const st = document.getElementById('filmstrip');
+      st.innerHTML = '';
+      currentStudy.files.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'filmstrip-item' + (i === 0 ? ' active' : '');
+        div.id = `thumb-${i}`;
+        div.innerHTML = `<b>#${i+1} ${f.bodyPart||'IMG'}</b><small>${f.viewPosition||''}</small>`;
+        div.onclick = () => assignImageToCell(activeCellIndex, f);
+        st.appendChild(div);
+      });
+    }
+
+    function openLayoutModal() { document.getElementById('layout-modal').style.display = 'flex'; renderLayoutTab('6-13'); }
+    function closeLayoutModal() { document.getElementById('layout-modal').style.display = 'none'; }
+
+    const LAYOUT_TABS_DATA = {
+      "1-2": [
+        { name: "1 Spot", rows: 1, cols: 1 },
+        { name: "2 Spots (1x2)", rows: 1, cols: 2 },
+        { name: "2 Spots (2x1)", rows: 2, cols: 1 }
+      ],
+      "3-4": [
+        { name: "3 Spots", rows: 1, cols: 3 },
+        { name: "4 Spots (2x2)", rows: 2, cols: 2 }
+      ],
+      "6-13": [
+        { name: "6 Spots (2x3)", rows: 2, cols: 3 },
+        { name: "6 Spots (3x2)", rows: 3, cols: 2 },
+        { name: "8 Spots (2x4)", rows: 2, cols: 4 },
+        { name: "8 Spots (4x2)", rows: 4, cols: 2 },
+        { name: "9 Spots (3x3)", rows: 3, cols: 3 },
+        { name: "10 Spots", rows: 2, cols: 5 },
+        { name: "12 Spots (3x4)", rows: 3, cols: 4 },
+        { name: "12 Spots (4x3)", rows: 4, cols: 3 },
+        { name: "13 Spots", rows: 3, cols: 5 }
+      ]
+    };
+
+    function renderLayoutTab(cat) {
+      document.querySelectorAll('.layout-tab').forEach(t => t.classList.remove('active'));
+      const activeEl = document.getElementById(`tab-${cat}`);
+      if (activeEl) activeEl.classList.add('active');
+
+      const container = document.getElementById('layout-grid-cards');
+      container.innerHTML = '';
+
+      (LAYOUT_TABS_DATA[cat] || []).forEach(opt => {
+        const card = document.createElement('div');
+        card.className = 'layout-opt' + (gridLayout.name === opt.name ? ' active' : '');
+        card.onclick = () => { setLayout(opt.rows, opt.cols, opt.name); closeLayoutModal(); };
+
+        const wire = document.createElement('div');
+        wire.className = 'layout-wire';
+        wire.style.gridTemplateRows = `repeat(${opt.rows}, 1fr)`;
+        wire.style.gridTemplateColumns = `repeat(${opt.cols}, 1fr)`;
+
+        for (let k = 0; k < opt.rows * opt.cols; k++) {
+          const c = document.createElement('div');
+          c.className = 'wire-cell';
+          wire.appendChild(c);
+        }
+
+        const lbl = document.createElement('small');
+        lbl.style.marginTop = '4px';
+        lbl.innerText = opt.name;
+
+        card.appendChild(wire);
+        card.appendChild(lbl);
+        container.appendChild(card);
+      });
+    }
+
+    function setLayout(rows, cols, name) {
+      gridLayout = { rows, cols, name };
+      document.getElementById('lbl-layout').innerText = name;
+
+      const grid = document.getElementById('grid-viewport');
+      grid.innerHTML = '';
+      grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+      grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      const totalCells = rows * cols;
+      const oldState = [...cellsState];
+      cellsState = [];
+
+      for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'view-cell' + (i === activeCellIndex ? ' active-cell' : '');
+        cell.id = `cell-${i}`;
+        cell.onclick = () => selectActiveCell(i);
+
+        const cvs = document.createElement('canvas');
+        cvs.id = `cvs-${i}`;
+        cell.appendChild(cvs);
+
+        const hudTL = document.createElement('div');
+        hudTL.className = 'cell-hud hud-tl';
+        hudTL.id = `hud-tl-${i}`;
+        cell.appendChild(hudTL);
+
+        const hudBR = document.createElement('div');
+        hudBR.className = 'cell-hud hud-br';
+        hudBR.id = `hud-br-${i}`;
+        cell.appendChild(hudBR);
+
+        grid.appendChild(cell);
+
+        if (oldState[i] && oldState[i].pixelData) {
+          cellsState.push(oldState[i]);
+          setTimeout(() => redrawCell(i), 30);
+        } else {
+          cellsState.push({
+            filename: null,
+            pixelData: null,
+            originalPixelBackup: null,
+            lastCropBox: null,
+            imgW: 0, imgH: 0,
+            wc: 2048, ww: 4096,
+            rowSpacing: 1.0, colSpacing: 1.0,
+            scale: 1.0, panX: 0, panY: 0,
+            rot: 0, flipH: false, flipV: false, invert: false,
+            offRaw: document.createElement('canvas'),
+            offFiltered: document.createElement('canvas'),
+            printZoom: 1.0, printPanX: 0, printPanY: 0
+          });
+        }
+      }
+
+      if (currentStudy && currentStudy.files) {
+        for (let i = 0; i < totalCells; i++) {
+          if (!cellsState[i].pixelData && currentStudy.files[i]) {
+            assignImageToCell(i, currentStudy.files[i]);
+          }
+        }
+      }
+
+      if (activeCellIndex >= totalCells) activeCellIndex = 0;
+      selectActiveCell(activeCellIndex);
+    }
+
+    function selectActiveCell(idx) {
+      activeCellIndex = idx;
+      document.querySelectorAll('.view-cell').forEach((c, i) => c.classList.toggle('active-cell', i === idx));
+      updateCropButtonsUI();
+    }
+
+    async function assignImageToCell(cellIdx, fileObj) {
+      const state = cellsState[cellIdx];
+      if (!state) return;
+      state.filename = fileObj.filename;
+      
+      const meta = await (await fetch(`/api/decode/${encodeURIComponent(fileObj.filename)}?t=${Date.now()}`)).json();
+      state.imgW = meta.width; state.imgH = meta.height;
+      state.wc = meta.wc; state.ww = meta.ww;
+      state.rowSpacing = meta.rowSpacing || 1.0;
+      state.colSpacing = meta.colSpacing || 1.0;
+      state.invert = (meta.photometric === 'MONOCHROME1');
+
+      const buf = await (await fetch(`/api/raw-pixels/${encodeURIComponent(fileObj.filename)}?t=${Date.now()}`)).arrayBuffer();
+      state.pixelData = new Uint16Array(buf);
+      state.originalPixelBackup = null;
+      state.lastCropBox = null;
+      state.printZoom = 1.0; state.printPanX = 0; state.printPanY = 0;
+
+      fitCell(cellIdx);
+      redrawCell(cellIdx);
+      updateCropButtonsUI();
+    }
+
+    function updateEnhancements() {
+      filterBright = parseInt(document.getElementById('slider-bright').value);
+      filterContrast = parseFloat(document.getElementById('slider-contrast').value);
+      filterSmooth = parseFloat(document.getElementById('slider-smooth').value);
+      filterSharp = parseInt(document.getElementById('slider-sharp').value);
+      filterGamma = parseFloat(document.getElementById('slider-gamma').value);
+
+      document.getElementById('val-bright').innerText = filterBright;
+      document.getElementById('val-contrast').innerText = filterContrast.toFixed(1);
+      document.getElementById('val-smooth').innerText = `${filterSmooth}px`;
+      document.getElementById('val-sharp').innerText = `${filterSharp}%`;
+      document.getElementById('val-gamma').innerText = filterGamma.toFixed(1);
+
+      for (let i = 0; i < cellsState.length; i++) {
+        if (cellsState[i] && cellsState[i].pixelData) redrawCell(i);
+      }
+      if (document.getElementById('film-modal').style.display === 'flex') composeFilm();
+    }
+
+    function resetEnhancements() {
+      document.getElementById('slider-bright').value = 0;
+      document.getElementById('slider-contrast').value = 1.0;
+      document.getElementById('slider-smooth').value = 0;
+      document.getElementById('slider-sharp').value = 0;
+      document.getElementById('slider-gamma').value = 1.0;
+      updateEnhancements();
+    }
+
+    function redrawCell(idx) {
+      const st = cellsState[idx];
+      if (!st || !st.pixelData) return;
+
+      const cell = document.getElementById(`cell-${idx}`);
+      const cvs = document.getElementById(`cvs-${idx}`);
+      const ctx = cvs.getContext('2d');
+
+      cvs.width = cell.clientWidth || 400;
+      cvs.height = cell.clientHeight || 400;
+
+      st.offRaw.width = st.imgW;
+      st.offRaw.height = st.imgH;
+      const rawCtx = st.offRaw.getContext('2d');
+      const imgData = rawCtx.createImageData(st.imgW, st.imgH);
+      const d = imgData.data;
+
+      const low = st.wc - st.ww / 2;
+      const high = st.wc + st.ww / 2;
+      const range = high - low || 1;
+
+      for (let i = 0; i < st.pixelData.length; i++) {
+        let val = st.pixelData[i];
+        let gray = val <= low ? 0 : (val >= high ? 255 : ((val - low) / range) * 255);
+        if (st.invert) gray = 255 - gray;
+        const p = i * 4;
+        d[p] = gray; d[p+1] = gray; d[p+2] = gray; d[p+3] = 255;
+      }
+      rawCtx.putImageData(imgData, 0, 0);
+
+      st.offFiltered.width = st.imgW;
+      st.offFiltered.height = st.imgH;
+      const filtCtx = st.offFiltered.getContext('2d');
+
+      filtCtx.clearRect(0, 0, st.imgW, st.imgH);
+      filtCtx.filter = `blur(${filterSmooth}px) brightness(${100 + filterBright}%) contrast(${filterContrast * 100}%)`;
+      filtCtx.drawImage(st.offRaw, 0, 0);
+      filtCtx.filter = 'none';
+
+      const frame = filtCtx.getImageData(0, 0, st.imgW, st.imgH);
+      const fd = frame.data;
+      const gammaLUT = new Uint8Array(256);
+      const invGamma = 1.0 / filterGamma;
+      for (let g = 0; g < 256; g++) gammaLUT[g] = Math.min(255, Math.max(0, Math.pow(g / 255, invGamma) * 255));
+
+      for (let k = 0; k < fd.length; k += 4) {
+        fd[k] = gammaLUT[fd[k]];
+        fd[k+1] = gammaLUT[fd[k+1]];
+        fd[k+2] = gammaLUT[fd[k+2]];
+      }
+
+      if (filterSharp > 0) {
+        const factor = filterSharp / 100;
+        const copy = new Uint8ClampedArray(fd);
+        for (let y = 1; y < st.imgH - 1; y++) {
+          for (let x = 1; x < st.imgW - 1; x++) {
+            const p = (y * st.imgW + x) * 4;
+            const lap = 4 * copy[p] - (copy[((y-1)*st.imgW+x)*4] + copy[((y+1)*st.imgW+x)*4] + copy[(y*st.imgW+(x-1))*4] + copy[(y*st.imgW+(x+1))*4]);
+            const s = copy[p] + lap * factor;
+            fd[p] = s; fd[p+1] = s; fd[p+2] = s;
+          }
+        }
+      }
+      filtCtx.putImageData(frame, 0, 0);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      ctx.save();
+      ctx.translate(st.panX + (st.imgW * st.scale) / 2, st.panY + (st.imgH * st.scale) / 2);
+      ctx.rotate((st.rot * Math.PI) / 180);
+      ctx.scale(st.flipH ? -1 : 1, st.flipV ? -1 : 1);
+      ctx.scale(st.scale, st.scale);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(st.offFiltered, -st.imgW / 2, -st.imgH / 2);
+      ctx.restore();
+
+      if (idx === activeCellIndex && isCropping && cropStart && cropEnd) {
+        ctx.save();
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        const rx = Math.min(cropStart.cx, cropEnd.cx);
+        const ry = Math.min(cropStart.cy, cropEnd.cy);
+        const rw = Math.abs(cropEnd.cx - cropStart.cx);
+        const rh = Math.abs(cropEnd.cy - cropStart.cy);
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.restore();
+      }
+
+      document.getElementById(`hud-tl-${idx}`).innerHTML = `${currentStudy.patientName}<br>WL: ${Math.round(st.wc)} WW: ${Math.round(st.ww)}`;
+      document.getElementById(`hud-br-${idx}`).innerHTML = `${st.originalPixelBackup ? 'CROPPED' : 'FULL'}<br>Rot: ${st.rot}°`;
+    }
+
+    function executeCrop(x1, y1, x2, y2) {
+      const st = cellsState[activeCellIndex];
+      if (!st || !st.pixelData) return;
+
+      const minX = Math.max(0, Math.min(Math.round(x1), Math.round(x2)));
+      const maxX = Math.min(st.imgW, Math.max(Math.round(x1), Math.round(x2)));
+      const minY = Math.max(0, Math.min(Math.round(y1), Math.round(y2)));
+      const maxY = Math.min(st.imgH, Math.max(Math.round(y1), Math.round(y2)));
+
+      const newW = maxX - minX;
+      const newH = maxY - minY;
+      if (newW < 10 || newH < 10) return;
+
+      if (!st.originalPixelBackup) {
+        st.originalPixelBackup = { data: new Uint16Array(st.pixelData), w: st.imgW, h: st.imgH };
+      }
+
+      st.lastCropBox = [minX, minY, maxX, maxY];
+      const cropped = new Uint16Array(newW * newH);
+      for (let r = 0; r < newH; r++) {
+        const srcOffset = (minY + r) * st.imgW + minX;
+        const dstOffset = r * newW;
+        for (let c = 0; c < newW; c++) cropped[dstOffset + c] = st.pixelData[srcOffset + c];
+      }
+
+      st.imgW = newW;
+      st.imgH = newH;
+      st.pixelData = cropped;
+
+      setTool('ww');
+      fitCell(activeCellIndex);
+      redrawCell(activeCellIndex);
+      updateCropButtonsUI();
+    }
+
+    function undoCurrentCrop() {
+      const st = cellsState[activeCellIndex];
+      if (st && st.originalPixelBackup) {
+        st.pixelData = new Uint16Array(st.originalPixelBackup.data);
+        st.imgW = st.originalPixelBackup.w;
+        st.imgH = st.originalPixelBackup.h;
+        st.originalPixelBackup = null;
+        st.lastCropBox = null;
+
+        fitCell(activeCellIndex);
+        redrawCell(activeCellIndex);
+        updateCropButtonsUI();
+      }
+    }
+
+    async function saveCropToBackend() {
+      const st = cellsState[activeCellIndex];
+      if (!st || !st.lastCropBox || !st.filename) return;
+
+      try {
+        const res = await fetch('/api/save-cropped-dicom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_filename: st.filename,
+            study_uid: currentStudy.study_uid || currentStudy.studyUid,
+            crop_box: st.lastCropBox
+          })
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.detail || "Failed to save");
+        alert("Cropped DICOM instance registered to database!");
+        
+        currentStudy.files.push(d.file_info);
+        renderSeriesStrip();
+      } catch (err) { alert("Save error: " + err.message); }
+    }
+
+    function updateCropButtonsUI() {
+      const st = cellsState[activeCellIndex];
+      const hasCrop = st && st.originalPixelBackup !== null;
+      document.getElementById('btn-undo-crop').style.display = hasCrop ? 'block' : 'none';
+      document.getElementById('btn-save-backend-crop').style.display = hasCrop ? 'block' : 'none';
+    }
+
+    function fitCell(idx) {
+      const st = cellsState[idx];
+      const cell = document.getElementById(`cell-${idx}`);
+      if (!st || !cell) return;
+      const cw = cell.clientWidth || 400;
+      const ch = cell.clientHeight || 400;
+      st.scale = Math.min((cw - 10) / st.imgW, (ch - 10) / st.imgH, 1.0);
+      st.panX = (cw - st.imgW * st.scale) / 2;
+      st.panY = (ch - st.imgH * st.scale) / 2;
+      redrawCell(idx);
+    }
+
+    function fitActiveCell() { fitCell(activeCellIndex); }
+
+    function resetActiveCell() {
+      const st = cellsState[activeCellIndex];
+      if (!st) return;
+      st.rot = 0; st.flipH = false; st.flipV = false;
+      fitActiveCell();
+    }
+
+    function rotateCW() { const st = cellsState[activeCellIndex]; if (st) { st.rot = (st.rot + 90) % 360; redrawCell(activeCellIndex); } }
+    function rotateACW() { const st = cellsState[activeCellIndex]; if (st) { st.rot = (st.rot - 90 + 360) % 360; redrawCell(activeCellIndex); } }
+    function flipH() { const st = cellsState[activeCellIndex]; if (st) { st.flipH = !st.flipH; redrawCell(activeCellIndex); } }
+    function flipV() { const st = cellsState[activeCellIndex]; if (st) { st.flipV = !st.flipV; redrawCell(activeCellIndex); } }
+    function toggleInvert() { const st = cellsState[activeCellIndex]; if (st) { st.invert = !st.invert; redrawCell(activeCellIndex); } }
+    function applyPreset(ww, wc) { const st = cellsState[activeCellIndex]; if (st) { st.ww = ww; st.wc = wc; redrawCell(activeCellIndex); } }
+
+    function setTool(t) {
+      currentTool = t;
+      document.querySelectorAll('#top-toolbar .tool-btn, .fp-tile').forEach(b => b.classList.remove('active'));
+      const btn = document.getElementById(`btn-${t}`);
+      if (btn) btn.classList.add('active');
+    }
+
+    const gridEl = document.getElementById('grid-viewport');
+
+    gridEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const st = cellsState[activeCellIndex];
+      if (!st || !st.pixelData) return;
+      const zoom = e.deltaY < 0 ? 1.12 : 0.88;
+      st.scale *= zoom;
+      redrawCell(activeCellIndex);
+    });
+
+    gridEl.addEventListener('mousedown', (e) => {
+      isMouseDown = true; mouseBtn = e.button;
+      startPos = { x: e.clientX, y: e.clientY };
+      const st = cellsState[activeCellIndex];
+      const cvs = document.getElementById(`cvs-${activeCellIndex}`);
+      if (!st || !cvs) return;
+
+      const rect = cvs.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      const ix = (cx - st.panX) / st.scale, iy = (cy - st.panY) / st.scale;
+
+      if (currentTool === 'crop' && mouseBtn === 0) {
+        cropStart = { cx, cy, ix, iy };
+        cropEnd = { ...cropStart };
+        isCropping = true;
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isCropping && cropStart && cropEnd) {
+        isCropping = false;
+        executeCrop(cropStart.ix, cropStart.iy, cropEnd.ix, cropEnd.iy);
+        cropStart = null; cropEnd = null;
+      }
+      isMouseDown = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isMouseDown) return;
+      const st = cellsState[activeCellIndex];
+      const cvs = document.getElementById(`cvs-${activeCellIndex}`);
+      if (!st || !cvs) return;
+
+      const dx = e.clientX - startPos.x, dy = e.clientY - startPos.y;
+      const rect = cvs.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+
+      if (mouseBtn === 2 || currentTool === 'pan') {
+        st.panX += dx; st.panY += dy; redrawCell(activeCellIndex);
+      } else if (currentTool === 'ww' && mouseBtn === 0) {
+        st.ww += dx * 4; st.wc -= dy * 4;
+        if (st.ww < 1) st.ww = 1;
+        redrawCell(activeCellIndex);
+      } else if (currentTool === 'crop' && isCropping && mouseBtn === 0) {
+        cropEnd = { cx, cy, ix: (cx - st.panX) / st.scale, iy: (cy - st.panY) / st.scale };
+        redrawCell(activeCellIndex);
+      }
+      startPos = { x: e.clientX, y: e.clientY };
+    });
+
+    // --- ALL-DETAILS-IN-FOOTER PRINT COMPOSER (LEFT VS CENTER TOGGLE) ---
+    const filmCanvas = document.getElementById('filmCanvas');
+    const filmCtx = filmCanvas.getContext('2d');
+
+    const FILM_SIZES = {
+      "8x10":  { w: 1600, h: 2000, css: "8in 10in" },
+      "10x12": { w: 2000, h: 2400, css: "10in 12in" },
+      "14x17": { w: 2100, h: 2550, css: "14in 17in" },
+      "A4":    { w: 1654, h: 2338, css: "A4" }
+    };
+
+    let printSlotBounds = [];
+    let activePrintSlot = -1;
+    let isPrintDragging = false;
+    let printDragPos = { x: 0, y: 0 };
+
+    function openFilmModal() {
+      resetFooterText();
+      document.getElementById('film-modal').style.display = 'flex';
+      composeFilm();
+    }
+    function closeFilmModal() { document.getElementById('film-modal').style.display = 'none'; }
+
+    function resetFooterText() {
+      if (currentStudy) {
+        document.getElementById('film-hospital-custom').value = currentUser?.hospital_name || 'CENTRAL PACS IMAGING';
+        document.getElementById('film-remarks-custom').value = `Ref: Dr. ${currentUser?.doctor_name || 'Consultant'} | Status: Verified`;
+      }
+      composeFilm();
+    }
+
+    function composeFilm() {
+      if (!currentStudy) return;
+      const sizeKey = document.getElementById('film-size-picker').value || "8x10";
+      const orientation = document.getElementById('film-orient-picker').value || "portrait";
+      const alignMode = document.getElementById('film-align-picker').value || "left";
+      
+      const hospName = document.getElementById('film-hospital-custom').value || 'HOSPITAL PACS';
+      const customRemarks = document.getElementById('film-remarks-custom').value || '';
+
+      const baseDim = FILM_SIZES[sizeKey] || FILM_SIZES["8x10"];
+      const sheetW = orientation === "portrait" ? baseDim.w : baseDim.h;
+      const sheetH = orientation === "portrait" ? baseDim.h : baseDim.w;
+
+      filmCanvas.width = sheetW;
+      filmCanvas.height = sheetH;
+      filmCtx.fillStyle = '#000';
+      filmCtx.fillRect(0, 0, sheetW, sheetH);
+
+      const margin = 35;
+      const topOffset = 30;
+      const footerHeight = 160;
+      const availW = sheetW - (margin * 2);
+      const availH = sheetH - topOffset - footerHeight;
+
+      const rows = gridLayout.rows, cols = gridLayout.cols;
+      const cellW = (availW - (cols - 1) * 12) / cols;
+      const cellH = (availH - (rows - 1) * 12) / rows;
+
+      printSlotBounds = [];
+      let idx = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const tx = margin + c * (cellW + 12);
+          const ty = topOffset + r * (cellH + 12);
+
+          printSlotBounds.push({ idx, x: tx, y: ty, w: cellW, h: cellH });
+
+          if (idx < cellsState.length) {
+            const st = cellsState[idx];
+            if (st && st.pixelData) {
+              filmCtx.save();
+              filmCtx.beginPath();
+              filmCtx.rect(tx, ty, cellW, cellH);
+              filmCtx.clip();
+
+              const baseScale = Math.min(cellW / st.imgW, cellH / st.imgH);
+              const appliedZoom = baseScale * (st.printZoom || 1.0);
+              const dw = st.imgW * appliedZoom;
+              const dh = st.imgH * appliedZoom;
+
+              const dx = tx + (cellW - dw) / 2 + (st.printPanX || 0);
+              const dy = ty + (cellH - dh) / 2 + (st.printPanY || 0);
+
+              filmCtx.imageSmoothingEnabled = false;
+              filmCtx.drawImage(st.offFiltered, dx, dy, dw, dh);
+              filmCtx.restore();
+
+              filmCtx.strokeStyle = (idx === activePrintSlot) ? '#00e5ff' : '#262626';
+              filmCtx.lineWidth = 1.5;
+              filmCtx.strokeRect(tx, ty, cellW, cellH);
+
+              filmCtx.fillStyle = '#00e5ff';
+              filmCtx.font = 'bold 13px monospace';
+              filmCtx.fillText(`[VIEW ${idx + 1}]`, tx + 6, ty + 16);
+            }
+          }
+          idx++;
+        }
+      }
+
+      // --- ALL DETAILS FOOTER ---
+      const footerStartY = sheetH - footerHeight + 10;
+
+      filmCtx.strokeStyle = '#333f4e';
+      filmCtx.lineWidth = 1.5;
+      filmCtx.beginPath();
+      filmCtx.moveTo(margin, footerStartY);
+      filmCtx.lineTo(sheetW - margin, footerStartY);
+      filmCtx.stroke();
+
+      const now = new Date();
+      const printTimeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+      const line1 = `PATIENT: ${currentStudy.patientName.toUpperCase()}   |   ID: ${currentStudy.patientId}   |   AGE/SEX: ${currentStudy.patientAge} / ${currentStudy.patientSex}`;
+      const line2 = `STUDY DATE: ${currentStudy.studyDate}   |   PRINT TIME: ${printTimeStr}   |   MODALITY: ${currentStudy.modality}   |   BODY PART: ${(currentStudy.bodyPart || 'EXAM').toUpperCase()}`;
+      const line3 = `HOSPITAL: ${hospName.toUpperCase()}   |   FILM: ${sizeKey.toUpperCase()} (${gridLayout.name})`;
+      const line4 = customRemarks ? `REMARKS: ${customRemarks}` : '';
+
+      if (alignMode === 'center') {
+        const midX = sheetW / 2;
+        filmCtx.textAlign = 'center';
+
+        filmCtx.fillStyle = '#ffffff';
+        filmCtx.font = 'bold 20px sans-serif';
+        filmCtx.fillText(line1, midX, footerStartY + 30);
+
+        filmCtx.font = '15px sans-serif';
+        filmCtx.fillStyle = '#e2e8f0';
+        filmCtx.fillText(line2, midX, footerStartY + 58);
+
+        filmCtx.fillStyle = '#00e5ff';
+        filmCtx.font = 'bold 15px sans-serif';
+        filmCtx.fillText(line3, midX, footerStartY + 86);
+
+        if (line4) {
+          filmCtx.fillStyle = '#94a3b8';
+          filmCtx.font = '14px sans-serif';
+          filmCtx.fillText(line4, midX, footerStartY + 114);
+        }
+      } else {
+        filmCtx.textAlign = 'left';
+
+        filmCtx.fillStyle = '#ffffff';
+        filmCtx.font = 'bold 20px sans-serif';
+        filmCtx.fillText(line1, margin, footerStartY + 30);
+
+        filmCtx.font = '15px sans-serif';
+        filmCtx.fillStyle = '#e2e8f0';
+        filmCtx.fillText(line2, margin, footerStartY + 58);
+
+        filmCtx.fillStyle = '#00e5ff';
+        filmCtx.font = 'bold 15px sans-serif';
+        filmCtx.fillText(line3, margin, footerStartY + 86);
+
+        if (line4) {
+          filmCtx.fillStyle = '#94a3b8';
+          filmCtx.font = '14px sans-serif';
+          filmCtx.fillText(line4, margin, footerStartY + 114);
+        }
+      }
+      filmCtx.textAlign = 'left';
+    }
+
+    function getPrintSlotAt(canvasX, canvasY) {
+      for (let b of printSlotBounds) {
+        if (canvasX >= b.x && canvasX <= b.x + b.w && canvasY >= b.y && canvasY <= b.y + b.h) {
+          return b.idx;
+        }
+      }
+      return -1;
+    }
+
+    filmCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = filmCanvas.getBoundingClientRect();
+      const scaleX = filmCanvas.width / rect.width;
+      const scaleY = filmCanvas.height / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      const slotIdx = getPrintSlotAt(cx, cy);
+      if (slotIdx !== -1 && cellsState[slotIdx] && cellsState[slotIdx].pixelData) {
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        cellsState[slotIdx].printZoom = (cellsState[slotIdx].printZoom || 1.0) * factor;
+        composeFilm();
+      }
+    });
+
+    filmCanvas.addEventListener('mousedown', (e) => {
+      const rect = filmCanvas.getBoundingClientRect();
+      const scaleX = filmCanvas.width / rect.width;
+      const scaleY = filmCanvas.height / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      activePrintSlot = getPrintSlotAt(cx, cy);
+      if (activePrintSlot !== -1) {
+        isPrintDragging = true;
+        printDragPos = { x: cx, y: cy };
+      }
+    });
+
+    window.addEventListener('mouseup', () => { isPrintDragging = false; });
+
+    filmCanvas.addEventListener('mousemove', (e) => {
+      if (!isPrintDragging || activePrintSlot === -1) return;
+      const rect = filmCanvas.getBoundingClientRect();
+      const scaleX = filmCanvas.width / rect.width;
+      const scaleY = filmCanvas.height / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      const dx = cx - printDragPos.x;
+      const dy = cy - printDragPos.y;
+
+      const st = cellsState[activePrintSlot];
+      if (st) {
+        st.printPanX = (st.printPanX || 0) + dx;
+        st.printPanY = (st.printPanY || 0) + dy;
+        printDragPos = { x: cx, y: cy };
+        composeFilm();
+      }
+    });
+
+    function executeFilmPrint() {
+      const sizeKey = document.getElementById('film-size-picker').value || "8x10";
+      const orientation = document.getElementById('film-orient-picker').value || "portrait";
+      const baseDim = FILM_SIZES[sizeKey] || FILM_SIZES["8x10"];
+      const dataUrl = filmCanvas.toDataURL('image/png');
+
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <!DOCTYPE html><html><head><title>Print Film</title>
+        <style>@page { size: ${baseDim.css} ${orientation}; margin: 0; } body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; } img { width:100%; height:100%; object-fit:contain; }</style>
+        </head><body><img src="${dataUrl}" onload="window.print(); setTimeout(()=>window.close(), 1000);" /></body></html>
+      `);
+      win.document.close();
+    }
+
+    checkExistingSession();
+  </script>
+</body>
+</html>
