@@ -115,6 +115,50 @@
     .auth-input:focus { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
     .auth-submit-btn { width: 100%; background: var(--accent); color: #000; font-weight: bold; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; transition: var(--transition); }
     .auth-submit-btn:hover { opacity: 0.9; box-shadow: 0 0 15px var(--accent-glow); transform: translateY(-1px); }
+
+    /* ================= FAST + RESPONSIVE PACS PATCH ================= */
+    html, body { width:100%; max-width:100%; }
+    #viewer-view, #main-viewport-container, #grid-viewport { min-height:0; }
+    #top-toolbar { overflow-x:auto; overflow-y:hidden; white-space:nowrap; scrollbar-width:thin; flex-shrink:0; }
+    #top-toolbar > * { flex:0 0 auto; }
+    @media (max-width: 900px) {
+      #navbar { height:50px; padding:0 8px; gap:6px; }
+      .brand { font-size:11px; min-width:0; white-space:nowrap; }
+      #navbar > div:last-child { overflow-x:auto; max-width:70vw; scrollbar-width:none; }
+      #navbar > div:last-child::-webkit-scrollbar { display:none; }
+      .nav-btn { padding:6px 8px; font-size:10px; white-space:nowrap; }
+      .view-screen { top:50px; }
+      #viewer-view { height:calc(100vh - 50px); position:relative; }
+      #sidebar-left { position:absolute; z-index:40; left:0; top:0; bottom:0; width:min(82vw,310px); min-width:0; transform:translateX(-102%); transition:transform .2s ease; box-shadow:12px 0 30px rgba(0,0,0,.6); }
+      #sidebar-left.mobile-open { transform:translateX(0); }
+      #sidebar-right { position:absolute; z-index:35; left:0; right:0; bottom:0; width:100%; min-width:0; height:auto; max-height:86px; padding:5px; border-left:0; border-top:1px solid var(--border-color); background:rgba(16,20,26,.96); }
+      .filmplus-grid { display:flex; overflow-x:auto; gap:5px; align-items:stretch; scrollbar-width:thin; }
+      .fp-tile { flex:0 0 70px; height:58px; font-size:9px; }
+      #main-viewport-container { width:100%; height:100%; }
+      #top-toolbar { height:42px; padding:0 6px; gap:5px; }
+      #top-toolbar .tool-btn { padding:6px 8px; font-size:10px; }
+      #grid-viewport { padding:2px 2px 64px 2px; gap:2px; }
+      .view-cell canvas { touch-action:none; }
+      .cell-hud { font-size:9px; }
+      #mobile-sidebar-toggle { display:inline-flex !important; }
+      #dashboard-view { padding:10px; overflow-x:auto; }
+      .dashboard-header { flex-direction:column; align-items:stretch !important; gap:8px; }
+      .search-box { width:100%; }
+      table { min-width:720px; }
+      #layout-dialog, #film-dialog, #whatsapp-dialog { width:calc(100vw - 16px); max-width:none; }
+      .layout-card-grid { padding:10px; gap:8px; }
+      #film-toolbar { overflow-x:auto; }
+    }
+    @media (min-width: 901px) { #mobile-sidebar-toggle { display:none !important; } }
+    @media (max-width: 520px) {
+      .brand { max-width:34vw; overflow:hidden; text-overflow:ellipsis; }
+      #nav-user-label { display:none; }
+      #top-toolbar .tool-btn:nth-child(3), #top-toolbar .tool-btn:nth-child(4) { display:none; }
+      #top-toolbar > div { display:none; }
+      #top-toolbar .tool-btn { font-size:9px; padding:5px 7px; }
+      .fp-tile { flex-basis:62px; height:54px; }
+      .auth-card { width:calc(100vw - 28px); padding:20px; }
+    }
   </style>
 </head>
 <body>
@@ -142,7 +186,7 @@
     <div class="brand">🏥 Medical PACS & Film Plus Suite</div>
     <div style="display:flex; gap:10px; align-items:center;">
       <span id="nav-user-label" style="font-size:11px; color:#cbd5e1; font-weight:600;"></span>
-      <a id="btn-admin-portal" href="/admin.html" class="nav-btn" style="display:none; color:#c084fc; border-color:#9333ea55; text-decoration:none;">⚙️ Master Admin Console</a>
+      <a id="btn-admin-portal" href="/admin.html" class="nav-btn" style="display:none; color:#c084fc; border-color:#9333ea55; text-decoration:none;" onclick="return openAdminConsole(event)">⚙️ Master Admin Console</a>
       <button class="nav-btn" onclick="showView('dashboard')">📋 Dashboard</button>
       <button class="nav-btn" onclick="syncFiles()">⚡ Sync Storage</button>
       <button class="nav-btn" onclick="fetchStudies()">🔄 Refresh</button>
@@ -171,6 +215,7 @@
   <div id="viewer-view" class="view-screen">
     <!-- Left Sidebar -->
     <aside id="sidebar-left">
+      <button id="mobile-sidebar-toggle" onclick="toggleMobileSidebar()" class="tool-btn" style="display:none;">☰ Patient / Series</button>
       <button onclick="showView('dashboard')" class="tool-btn">⬅ Back to Worklist</button>
       <div class="section-title">Patient Info</div>
       <div id="hud-patient" style="font-size:11px; color:#cbd5e1; line-height: 1.4;">--</div>
@@ -329,6 +374,8 @@
     let gridLayout = { rows: 1, cols: 1, name: "1 Spot" };
     let activeCellIndex = 0;
     let cellsState = [];
+    let adminOtpToken = sessionStorage.getItem('pacs_admin_otp_token') || '';
+    let adminOtpRequestId = '';
 
     let currentTool = 'ww';
     let isMouseDown = false, mouseBtn = 0, startPos = { x: 0, y: 0 };
@@ -338,29 +385,185 @@
 
     async function handleLogin(e) {
       e.preventDefault();
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          username: document.getElementById('login-username').value.trim(), 
-          password: document.getElementById('login-password').value 
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data.detail || 'Login Failed');
-      currentUser = data.user;
-      localStorage.setItem('pacs_user', JSON.stringify(currentUser));
-      applyLoggedInUser();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      try {
+        const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password}) });
+        const data = await res.json();
+        if (!res.ok) return alert(data.detail || 'Login Failed');
+        if (data.requires_admin_otp) {
+          // Always open the OTP entry dialog first. This makes the OTP screen
+          // visible even when the mail server has a configuration problem.
+          showAdminOtpDialog('', 300);
+          const otpStatus = document.getElementById('admin-otp-email');
+          if (otpStatus) otpStatus.textContent = 'Sending OTP to the administrator email...';
+
+          try {
+            const otpRes = await fetch('/api/auth/request-admin-otp', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({username,password})
+            });
+            const otpData = await otpRes.json();
+
+            if (!otpRes.ok) {
+              if (otpStatus) {
+                otpStatus.innerHTML = '<span style="color:#fca5a5;">OTP could not be sent: ' +
+                  (otpData.detail || 'Unable to send administrator OTP') +
+                  '</span><br><span style="font-size:10px;">Fix the server Gmail/SMTP configuration, then click Resend OTP.</span>';
+              }
+              return;
+            }
+
+            adminOtpRequestId = otpData.request_id;
+            showAdminOtpDialog(otpData.email, otpData.expires_in);
+          } catch (otpErr) {
+            if (otpStatus) {
+              otpStatus.innerHTML = '<span style="color:#fca5a5;">OTP request failed: ' +
+                (otpErr.message || 'Server connection error') +
+                '</span><br><span style="font-size:10px;">Check that the PACS server is running, then click Resend OTP.</span>';
+            }
+          }
+          return;
+        }
+        currentUser = data.user;
+        localStorage.setItem('pacs_user', JSON.stringify(currentUser));
+        applyLoggedInUser();
+      } catch (err) { alert('Login error: ' + err.message); }
+    }
+
+    function showAdminOtpDialog(email, expiresIn) {
+      let box = document.getElementById('admin-otp-dialog');
+      if (!box) {
+        box = document.createElement('div'); box.id='admin-otp-dialog'; box.className='modal-overlay'; box.style.display='flex';
+        box.innerHTML = `<div class="auth-card" style="width:380px;">
+          <h3 style="color:var(--accent);margin-bottom:8px;">🔐 Administrator OTP</h3>
+          <p id="admin-otp-email" style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">Enter the 6-digit OTP sent to the administrator email.</p>
+          <input id="admin-otp-input" class="auth-input" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit OTP" autocomplete="one-time-code">
+          <button class="auth-submit-btn" onclick="verifyAdminOtp()">Submit / Verify OTP</button>
+          <button class="tool-btn" style="width:100%;margin-top:8px;" onclick="resendAdminOtp()">↻ Resend OTP</button>
+        </div>`;
+        document.body.appendChild(box);
+      }
+      document.getElementById('admin-otp-email').textContent=`OTP sent to ${email}. Valid for ${Math.ceil(expiresIn/60)} minutes.`;
+      box.style.display='flex'; setTimeout(()=>document.getElementById('admin-otp-input')?.focus(),50);
+    }
+
+   async function verifyAdminOtp() {
+  console.log("VERIFY OTP BUTTON CLICKED");
+
+  const otpInput = document.getElementById('admin-otp-input');
+
+  if (!otpInput) {
+    console.error("OTP input not found");
+    alert("OTP input not found");
+    return;
+  }
+
+  const otp = otpInput.value.trim();
+
+  if (!/^\d{6}$/.test(otp)) {
+    alert("Please enter the 6-digit OTP");
+    return;
+  }
+
+  if (!adminOtpRequestId) {
+    alert("OTP request expired. Please request a new OTP.");
+    return;
+  }
+
+  try {
+    console.log("Sending OTP verification request...");
+
+    const res = await fetch('/api/auth/verify-admin-otp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        request_id: adminOtpRequestId,
+        otp: otp
+      })
+    });
+
+    console.log("OTP verification HTTP status:", res.status);
+
+    const data = await res.json();
+
+    console.log("OTP verification response:", data);
+
+    if (!res.ok) {
+      alert(data.detail || 'OTP verification failed');
+      return;
+    }
+
+    adminOtpToken = data.otp_token;
+
+    sessionStorage.setItem(
+      'pacs_admin_otp_token',
+      adminOtpToken
+    );
+
+    const dialog = document.getElementById('admin-otp-dialog');
+
+    if (dialog) {
+      dialog.style.display = 'none';
+    }
+
+    /*
+     * OTP successfully verified.
+     * Use the administrator account that was already
+     * authenticated before requesting the OTP.
+     */
+
+    if (currentUser) {
+      currentUser.role =
+        String(currentUser.role || '').toUpperCase();
+
+      localStorage.setItem(
+        'pacs_user',
+        JSON.stringify(currentUser)
+      );
+
+      if (currentUser.role === 'ADMIN') {
+
+        console.log("ADMIN OTP VERIFIED");
+        console.log("Redirecting to /admin.html");
+
+        window.location.replace('/admin.html');
+        return;
+      }
+    }
+
+    alert("OTP verified, but administrator account was not found.");
+
+  } catch (error) {
+
+    console.error("OTP verification error:", error);
+
+    alert(
+      "OTP verification failed: " +
+      (error.message || error)
+    );
+  }
+}
+
+    async function resendAdminOtp() {
+      const username=document.getElementById('login-username').value.trim(), password=document.getElementById('login-password').value;
+      const res=await fetch('/api/auth/request-admin-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const data=await res.json(); if(!res.ok) return alert(data.detail||'Unable to resend OTP');
+      adminOtpRequestId=data.request_id; document.getElementById('admin-otp-input').value=''; document.getElementById('admin-otp-email').textContent=`New OTP sent to ${data.email}. Valid for ${Math.ceil(data.expires_in/60)} minutes.`;
     }
 
     function checkExistingSession() {
-      const s = localStorage.getItem('pacs_user');
-      if (s) { 
-        currentUser = JSON.parse(s); 
-        applyLoggedInUser(); 
-      } else { 
-        document.getElementById('auth-overlay').style.display = 'flex'; 
-      }
+      const s=localStorage.getItem('pacs_user');
+      if(s){
+        try{
+          currentUser=JSON.parse(s);
+          if(currentUser.role==='ADMIN' && !adminOtpToken){ localStorage.removeItem('pacs_user'); currentUser=null; document.getElementById('auth-overlay').style.display='flex'; return; }
+          applyLoggedInUser();
+        }catch(e){ localStorage.removeItem('pacs_user'); document.getElementById('auth-overlay').style.display='flex'; }
+      } else document.getElementById('auth-overlay').style.display='flex';
     }
 
     function applyLoggedInUser() {
@@ -377,10 +580,24 @@
       fetchStudies();
     }
 
-    function handleLogout() { 
-      localStorage.removeItem('pacs_user'); 
-      location.reload(); 
+    function openAdminConsole(e) {
+      if (!currentUser || currentUser.role !== 'ADMIN' || !sessionStorage.getItem('pacs_admin_otp_token')) {
+        e.preventDefault();
+        alert('Administrator OTP verification is required. Please sign in again.');
+        handleLogout();
+        return false;
+      }
+      return true;
     }
+
+    function handleLogout() {
+      localStorage.removeItem('pacs_user');
+      sessionStorage.removeItem('pacs_admin_otp_token');
+      adminOtpToken='';
+      location.reload();
+    }
+
+    function toggleMobileSidebar(){ document.getElementById('sidebar-left')?.classList.toggle('mobile-open'); }
 
     async function fetchStudies() {
       const res = await fetch(`/api/studies-meta?doctor_username=${encodeURIComponent(currentUser.username)}&t=${Date.now()}`);
@@ -444,7 +661,7 @@
         div.className = 'filmstrip-item' + (i === 0 ? ' active' : '');
         div.id = `thumb-${i}`;
         div.innerHTML = `<b>#${i+1} ${f.bodyPart||'IMG'}</b><small style="color:var(--text-muted);">${f.viewPosition||''}</small>`;
-        div.onclick = () => assignImageToCell(activeCellIndex, f);
+        div.onclick = () => { assignImageToCell(activeCellIndex, f); document.getElementById('sidebar-left')?.classList.remove('mobile-open'); };
         st.appendChild(div);
       });
     }
@@ -614,29 +831,36 @@
       activeCellIndex = idx;
       document.querySelectorAll('.view-cell').forEach((c, i) => c.classList.toggle('active-cell', i === idx));
       updateCropButtonsUI();
+      if(window.innerWidth<=900) document.getElementById('sidebar-left')?.classList.remove('mobile-open');
     }
 
-    async function assignImageToCell(cellIdx, fileObj) {
-      const state = cellsState[cellIdx];
-      if (!state) return;
-      state.filename = fileObj.filename;
-      
-      const meta = await (await fetch(`/api/decode/${encodeURIComponent(fileObj.filename)}?t=${Date.now()}`)).json();
-      state.imgW = meta.width; state.imgH = meta.height;
-      state.wc = meta.wc; state.ww = meta.ww;
-      state.rowSpacing = meta.rowSpacing || 1.0;
-      state.colSpacing = meta.colSpacing || 1.0;
-      state.invert = (meta.photometric === 'MONOCHROME1');
+    async function assignImageToCell(cellIdx,fileObj){
+      const state=cellsState[cellIdx]; if(!state)return;
+      state.filename=fileObj.filename; state.loading=true; state.renderKey=''; state.pixelData=null; state.previewImage=null;
+      try{
+        const [metaRes,previewRes]=await Promise.all([
+          fetch(`/api/decode/${encodeURIComponent(fileObj.filename)}`,{cache:'force-cache'}),
+          fetch(`/api/preview/${encodeURIComponent(fileObj.filename)}`,{cache:'force-cache'})
+        ]);
+        const meta=await metaRes.json();
+        if(!metaRes.ok)throw new Error(meta.error||'Unable to read DICOM metadata');
+        state.imgW=meta.width;state.imgH=meta.height;state.wc=meta.wc;state.ww=meta.ww;state.rowSpacing=meta.rowSpacing||1;state.colSpacing=meta.colSpacing||1;state.invert=meta.photometric==='MONOCHROME1';
+        state.originalPixelBackup=null;state.lastCropBox=null;state.printZoom=1;state.printPanX=0;state.printPanY=0;
+        if(previewRes.ok){
+          const blob=await previewRes.blob(),url=URL.createObjectURL(blob),img=new Image();
+          await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;});
+          state.previewImage=img;fitCell(cellIdx);drawPreviewCell(cellIdx);URL.revokeObjectURL(url);
+        }
+        const rawRes=await fetch(`/api/raw-pixels/${encodeURIComponent(fileObj.filename)}`,{cache:'force-cache'});
+        if(!rawRes.ok)throw new Error('Unable to load DICOM pixels');
+        state.pixelData=new Uint16Array(await rawRes.arrayBuffer());state.previewImage=null;state.loading=false;
+        fitCell(cellIdx);redrawCell(cellIdx,true);updateCropButtonsUI();
+      }catch(err){state.loading=false;console.error(err);alert('Image loading failed: '+err.message);}
+    }
 
-      const buf = await (await fetch(`/api/raw-pixels/${encodeURIComponent(fileObj.filename)}?t=${Date.now()}`)).arrayBuffer();
-      state.pixelData = new Uint16Array(buf);
-      state.originalPixelBackup = null;
-      state.lastCropBox = null;
-      state.printZoom = 1.0; state.printPanX = 0; state.printPanY = 0;
-
-      fitCell(cellIdx);
-      redrawCell(cellIdx);
-      updateCropButtonsUI();
+    function drawPreviewCell(idx){
+      const st=cellsState[idx];if(!st?.previewImage)return;const cell=document.getElementById(`cell-${idx}`),cvs=document.getElementById(`cvs-${idx}`);if(!cell||!cvs)return;
+      cvs.width=cell.clientWidth||400;cvs.height=cell.clientHeight||400;const ctx=cvs.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cvs.width,cvs.height);ctx.save();ctx.translate(st.panX+(st.imgW*st.scale)/2,st.panY+(st.imgH*st.scale)/2);ctx.rotate(st.rot*Math.PI/180);ctx.scale(st.flipH?-1:1,st.flipV?-1:1);ctx.scale(st.scale,st.scale);ctx.imageSmoothingEnabled=true;ctx.drawImage(st.previewImage,-st.imgW/2,-st.imgH/2,st.imgW,st.imgH);ctx.restore();
     }
 
     function updateEnhancements() {
@@ -668,100 +892,22 @@
     }
 
     // --- RENDER CELL (APPLIES ALL FILTERS & TRANSFORMS) ---
-    function redrawCell(idx) {
-      const st = cellsState[idx];
-      if (!st || !st.pixelData) return;
-
-      const cell = document.getElementById(`cell-${idx}`);
-      const cvs = document.getElementById(`cvs-${idx}`);
-      const ctx = cvs.getContext('2d');
-
-      cvs.width = cell.clientWidth || 400;
-      cvs.height = cell.clientHeight || 400;
-
-      st.offRaw.width = st.imgW;
-      st.offRaw.height = st.imgH;
-      const rawCtx = st.offRaw.getContext('2d');
-      const imgData = rawCtx.createImageData(st.imgW, st.imgH);
-      const d = imgData.data;
-
-      const low = st.wc - st.ww / 2;
-      const high = st.wc + st.ww / 2;
-      const range = high - low || 1;
-
-      for (let i = 0; i < st.pixelData.length; i++) {
-        let val = st.pixelData[i];
-        let gray = val <= low ? 0 : (val >= high ? 255 : ((val - low) / range) * 255);
-        if (st.invert) gray = 255 - gray;
-        const p = i * 4;
-        d[p] = gray; d[p+1] = gray; d[p+2] = gray; d[p+3] = 255;
-      }
-      rawCtx.putImageData(imgData, 0, 0);
-
-      st.offFiltered.width = st.imgW;
-      st.offFiltered.height = st.imgH;
-      const filtCtx = st.offFiltered.getContext('2d');
-
-      filtCtx.clearRect(0, 0, st.imgW, st.imgH);
-      filtCtx.filter = `blur(${filterSmooth}px) brightness(${100 + filterBright}%) contrast(${filterContrast * 100}%)`;
-      filtCtx.drawImage(st.offRaw, 0, 0);
-      filtCtx.filter = 'none';
-
-      const frame = filtCtx.getImageData(0, 0, st.imgW, st.imgH);
-      const fd = frame.data;
-      const gammaLUT = new Uint8Array(256);
-      const invGamma = 1.0 / filterGamma;
-      for (let g = 0; g < 256; g++) gammaLUT[g] = Math.min(255, Math.max(0, Math.pow(g / 255, invGamma) * 255));
-
-      for (let k = 0; k < fd.length; k += 4) {
-        fd[k] = gammaLUT[fd[k]];
-        fd[k+1] = gammaLUT[fd[k+1]];
-        fd[k+2] = gammaLUT[fd[k+2]];
-      }
-
-      if (filterSharp > 0) {
-        const factor = filterSharp / 100;
-        const copy = new Uint8ClampedArray(fd);
-        for (let y = 1; y < st.imgH - 1; y++) {
-          for (let x = 1; x < st.imgW - 1; x++) {
-            const p = (y * st.imgW + x) * 4;
-            const lap = 4 * copy[p] - (copy[((y-1)*st.imgW+x)*4] + copy[((y+1)*st.imgW+x)*4] + copy[(y*st.imgW+(x-1))*4] + copy[(y*st.imgW+(x+1))*4]);
-            const s = copy[p] + lap * factor;
-            fd[p] = s; fd[p+1] = s; fd[p+2] = s;
-          }
-        }
-      }
-      filtCtx.putImageData(frame, 0, 0);
-
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, cvs.width, cvs.height);
-
-      ctx.save();
-      ctx.translate(st.panX + (st.imgW * st.scale) / 2, st.panY + (st.imgH * st.scale) / 2);
-      ctx.rotate((st.rot * Math.PI) / 180);
-      ctx.scale(st.flipH ? -1 : 1, st.flipV ? -1 : 1);
-      ctx.scale(st.scale, st.scale);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(st.offFiltered, -st.imgW / 2, -st.imgH / 2);
-      ctx.restore();
-
-      if (idx === activeCellIndex && isCropping && cropStart && cropEnd) {
-        ctx.save();
-        ctx.strokeStyle = '#00e5ff';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        const rx = Math.min(cropStart.cx, cropEnd.cx);
-        const ry = Math.min(cropStart.cy, cropEnd.cy);
-        const rw = Math.abs(cropEnd.cx - cropStart.cx);
-        const rh = Math.abs(cropEnd.cy - cropStart.cy);
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.restore();
-      }
-
-      document.getElementById(`hud-tl-${idx}`).innerHTML = `${currentStudy.patientName}<br>WL: ${Math.round(st.wc)} WW: ${Math.round(st.ww)}`;
-      document.getElementById(`hud-br-${idx}`).innerHTML = `${st.originalPixelBackup ? 'CROPPED' : 'FULL'}<br>Rot: ${st.rot}°`;
+    function buildRenderKey(st){return [st.filename,st.imgW,st.imgH,st.wc,st.ww,st.invert,filterBright,filterContrast,filterSmooth,filterSharp,filterGamma,st.pixelData?.byteLength||0].join('|');}
+    function rebuildProcessedCanvas(st){
+      st.offRaw.width=st.imgW;st.offRaw.height=st.imgH;st.offFiltered.width=st.imgW;st.offFiltered.height=st.imgH;
+      const rawCtx=st.offRaw.getContext('2d'),imgData=rawCtx.createImageData(st.imgW,st.imgH),d=imgData.data;
+      const low=st.wc-st.ww/2,range=Math.max(1,st.ww),invGamma=1/Math.max(.01,filterGamma),lut=new Uint8Array(256);
+      for(let g=0;g<256;g++){let v=Math.pow(g/255,invGamma)*255;v=(v-127.5)*filterContrast+127.5+filterBright*2.55;lut[g]=Math.max(0,Math.min(255,v));}
+      for(let i=0,p=0;i<st.pixelData.length;i++,p+=4){let gray=(st.pixelData[i]-low)*255/range;gray=gray<=0?0:(gray>=255?255:gray);if(st.invert)gray=255-gray;gray=lut[gray|0];d[p]=gray;d[p+1]=gray;d[p+2]=gray;d[p+3]=255;}
+      rawCtx.putImageData(imgData,0,0);
+      const filtCtx=st.offFiltered.getContext('2d');filtCtx.clearRect(0,0,st.imgW,st.imgH);if(filterSmooth>.1)filtCtx.filter=`blur(${filterSmooth}px)`;filtCtx.drawImage(st.offRaw,0,0);filtCtx.filter='none';
+      if(filterSharp>0){const frame=filtCtx.getImageData(0,0,st.imgW,st.imgH),fd=frame.data,copy=new Uint8ClampedArray(fd),factor=filterSharp/100;for(let y=1;y<st.imgH-1;y++){for(let x=1;x<st.imgW-1;x++){const p=(y*st.imgW+x)*4,lap=4*copy[p]-(copy[((y-1)*st.imgW+x)*4]+copy[((y+1)*st.imgW+x)*4]+copy[(y*st.imgW+x-1)*4]+copy[(y*st.imgW+x+1)*4]),v=Math.max(0,Math.min(255,copy[p]+lap*factor));fd[p]=fd[p+1]=fd[p+2]=v;}}filtCtx.putImageData(frame,0,0);}
+      st.renderKey=buildRenderKey(st);
+    }
+    function redrawCell(idx,force=false){
+      const st=cellsState[idx];if(!st)return;if(!st.pixelData){drawPreviewCell(idx);return;}const cell=document.getElementById(`cell-${idx}`),cvs=document.getElementById(`cvs-${idx}`);if(!cell||!cvs)return;cvs.width=cell.clientWidth||400;cvs.height=cell.clientHeight||400;const key=buildRenderKey(st);if(force||st.renderKey!==key)rebuildProcessedCanvas(st);const ctx=cvs.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cvs.width,cvs.height);ctx.save();ctx.translate(st.panX+(st.imgW*st.scale)/2,st.panY+(st.imgH*st.scale)/2);ctx.rotate(st.rot*Math.PI/180);ctx.scale(st.flipH?-1:1,st.flipV?-1:1);ctx.scale(st.scale,st.scale);ctx.imageSmoothingEnabled=false;ctx.drawImage(st.offFiltered,-st.imgW/2,-st.imgH/2);ctx.restore();
+      if(idx===activeCellIndex&&isCropping&&cropStart&&cropEnd){ctx.save();ctx.strokeStyle='#00e5ff';ctx.lineWidth=2;ctx.setLineDash([4,4]);const rx=Math.min(cropStart.cx,cropEnd.cx),ry=Math.min(cropStart.cy,cropEnd.cy),rw=Math.abs(cropEnd.cx-cropStart.cx),rh=Math.abs(cropEnd.cy-cropStart.cy);ctx.strokeRect(rx,ry,rw,rh);ctx.fillStyle='rgba(0,229,255,.15)';ctx.fillRect(rx,ry,rw,rh);ctx.restore();}
+      document.getElementById(`hud-tl-${idx}`).innerHTML=`${currentStudy.patientName}<br>WL: ${Math.round(st.wc)} WW: ${Math.round(st.ww)}`;document.getElementById(`hud-br-${idx}`).innerHTML=`${st.originalPixelBackup?'CROPPED':'FULL'}<br>Rot: ${st.rot}°`;
     }
 
     function executeCrop(x1, y1, x2, y2) {
@@ -1188,6 +1334,8 @@
       `);
       win.document.close();
     }
+
+    window.addEventListener('resize',()=>{cellsState.forEach((st,i)=>{if(st?.pixelData)fitCell(i);else if(st?.previewImage){fitCell(i);drawPreviewCell(i);}})});
 
     checkExistingSession();
   </script>
