@@ -26,6 +26,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
+import requests
 import uvicorn
 
 # 1. SETUP LOGGING & DIRECTORIES
@@ -213,7 +214,7 @@ def start_dicom_listener():
 
 threading.Thread(target=start_dicom_listener, daemon=True).start()
 
-# 5. PIXEL CACHING (Increased cache size for faster subsequent loads)
+# 5. PIXEL CACHING
 @lru_cache(maxsize=128)
 def get_cached_pixel_bytes(filepath: str) -> bytes:
     ds = pydicom.dcmread(filepath, force=True)
@@ -371,7 +372,6 @@ def decode_dicom(filename: str):
         if candidates: filepath = os.path.join(STORAGE_DIR, candidates[0])
         else: return JSONResponse(status_code=404, content={"error": "File not found"})
 
-    # OPTIMIZED: stop_before_pixels=True ensures metadata reads instantly without parsing 35MB pixel array
     ds = pydicom.dcmread(filepath, stop_before_pixels=True, force=True)
     wc = getattr(ds, "WindowCenter", 2048)
     ww = getattr(ds, "WindowWidth", 4096)
@@ -400,7 +400,6 @@ def raw_pixels(filename: str):
         if candidates: filepath = os.path.join(STORAGE_DIR, candidates[0])
         else: return Response(status_code=404)
 
-    # Uses LRU Cache + Browser Caching headers for instant subsequent loads
     data = get_cached_pixel_bytes(filepath)
     headers = {
         "Cache-Control": "public, max-age=86400",
@@ -518,6 +517,44 @@ async def save_report(payload: dict):
 def get_report(study_uid: str):
     rep = reports_col.find_one({"study_uid": study_uid}, {"_id": 0})
     return rep if rep else {"clinicalHistory": "", "findings": "", "impression": ""}
+
+# 6. CENTRALIZED WHATSAPP MEDIA DISPATCH API
+CENTRAL_WHATSAPP_TOKEN = "APKA_PERMANENT_YA_TEMPORARY_TOKEN"
+CENTRAL_PHONE_NUMBER_ID = "APKA_CENTRAL_PHONE_NUMBER_ID"
+
+@app.post("/api/send-whatsapp-media")
+async def send_whatsapp_media(payload: dict):
+    recipient_phone = payload.get("phone") # Format: 919876543210
+    media_url = payload.get("media_url")   # Public URL of image/report
+    caption_text = payload.get("caption", "Aapki PACS Medical Report / Image.")
+    
+    if not recipient_phone or not media_url:
+        raise HTTPException(status_code=400, detail="Phone number and media URL are required.")
+
+    url = f"https://graph.facebook.com/v17.0/{CENTRAL_PHONE_NUMBER_ID}/messages"
+    
+    headers = {
+        "Authorization": f"Bearer {CENTRAL_WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    
+    body = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient_phone,
+        "type": "image",
+        "image": {
+            "link": media_url,
+            "caption": caption_text
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=body)
+    
+    if response.status_code == 200:
+        return {"status": "success", "response": response.json()}
+    else:
+        raise HTTPException(status_code=500, detail=f"WhatsApp Media API Error: {response.text}")
 
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.mount("/", StaticFiles(directory=PUBLIC_DIR, html=True), name="public")
